@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT Temperature and Humidity Data</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: row;
+            justify-content: center;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 20px;
+        }
+        .panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 300px;
+            margin: 0 20px;
+        }
+        .left-panel {
+            max-width: 400px;
+            flex: 1;
+        }
+        .right-panel {
+            max-width: 400px;
+            flex: 1;
+        }
+        .data-item {
+            font-size: 24px;
+            margin: 10px 0;
+        }
+        #clock {
+            font-size: 20px;
+            color: #555;
+            margin-top: 20px;
+        }
+        canvas {
+            max-width: 100%;
+        }
+        .image-container img {
+            max-width: 100%;
+            border-radius: 10px;
+        }
+        .comment-container {
+            width: 100%;
+        }
+        .comment-container input, .comment-container textarea {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .comment-list {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 10px;
+        }
+        .comment-item {
+            border-bottom: 1px solid #ccc;
+            padding: 10px 0;
+            position: relative;
+        }
+        .comment-item:last-child {
+            border-bottom: none;
+        }
+        .comment-date {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 5px;
+        }
+        .comment-name {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 5px;
+        }
+        .comment-text {
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div class="panel left-panel">
+        <h1>Dados de Temperatura e Umidade</h1>
+        <div id="clock"></div>
+        <div class="data-container">
+            <div id="temperature" class="data-item">Aguardando dados de temperatura...</div>
+            <div id="humidity" class="data-item">Aguardando dados de umidade...</div>
+        </div>
+        <div class="chart-container">
+            <canvas id="temperatureChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <canvas id="humidityChart"></canvas>
+        </div>
+    </div>
+    <div class="panel">
+        <div class="image-container">
+            <img id="slideshow" src="" alt="Imagem">
+        </div>
+    </div>
+    <div class="panel right-panel">
+        <div class="comment-container">
+            <input type="text" id="name" placeholder="Seu Nome">
+            <textarea id="comment" placeholder="Seu Comentário"></textarea>
+            <button onclick="saveComment()">Enviar Comentário</button>
+            <div class="comment-list" id="commentList"></div>
+        </div>
+    </div>
+    <script>
+        // Função para atualizar o relógio
+        function updateClock() {
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            document.getElementById('clock').innerText = `Horário: ${hours}:${minutes}:${seconds}`;
+        }
+
+        // Atualizar o relógio a cada segundo
+        setInterval(updateClock, 1000);
+        updateClock(); // Chamar a função imediatamente para definir o horário inicial
+
+        // Conectar ao broker MQTT
+        const client = mqtt.connect('wss://mqtt.eclipseprojects.io:443/mqtt');
+
+        // Configuração dos gráficos
+        const ctxTemperature = document.getElementById('temperatureChart').getContext('2d');
+        const ctxHumidity = document.getElementById('humidityChart').getContext('2d');
+        const temperatureChart = new Chart(ctxTemperature, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Temperatura (°C)',
+                    data: [],
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1,
+                    fill: false
+                }]
+            },
+            options: {
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'minute'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+        const humidityChart = new Chart(ctxHumidity, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Umidade (%)',
+                    data: [],
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1,
+                    fill: false
+                }]
+            },
+            options: {
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'minute'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        // Quando conectado, inscrever-se no tópico
+        client.on('connect', function () {
+            console.log('Conectado ao broker MQTT');
+            client.subscribe('esp8266/data', function (err) {
+                if (!err) {
+                    console.log('Inscrito no tópico esp8266/data');
+                } else {
+                    console.error('Erro ao inscrever-se no tópico:', err);
+                }
+            });
+        });
+
+        // Quando uma mensagem é recebida, atualizar a página e os gráficos
+        client.on('message', function (topic, message) {
+            console.log(`Mensagem recebida no tópico ${topic}: ${message.toString()}`);
+            if (topic === 'esp8266/data') {
+                try {
+                    const data = JSON.parse(message.toString());
+                    if (data.temperature !== undefined && data.humidity !== undefined) {
+                        document.getElementById('temperature').innerText = `Temperatura: ${data.temperature} °C`;
+                        document.getElementById('humidity').innerText = `Umidade: ${data.humidity} %`;
+
+                        const now = new Date();
+                        temperatureChart.data.labels.push(now);
+                        temperatureChart.data.datasets[0].data.push(data.temperature);
+                        temperatureChart.update();
+
+                        humidityChart.data.labels.push(now);
+                        humidityChart.data.datasets[0].data.push(data.humidity);
+                        humidityChart.update();
+                    } else {
+                        console.error('Campos "temperature" ou "humidity" não encontrados nos dados:', data);
+                    }
+                } catch (e) {
+                    console.error('Erro ao analisar os dados recebidos:', e);
+                }
+            }
+        });
+
+        // Lidar com erros de conexão
+        client.on('error', function (error) {
+            console.error('Erro de conexão:', error);
+            document.getElementById('temperature').innerText = 'Erro ao conectar ao broker MQTT';
+            document.getElementById('humidity').innerText = 'Erro ao conectar ao broker MQTT';
+        });
+
+        // Slideshow de imagens
+        const images = [
+            'https://img.elo7.com.br/product/685x685/4310019/propaganda-para-seu-negocio-post.jpg',
+            'https://files.clicrdc.com.br/wp-content/uploads/2020/09/whatsapp-image-2020-09-15-at-145130-scaled.jpeg',
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAT4AAACfCAMAAABX0UX9AAABj1BMVEUAMmf8tBT///8AMmYAMWnOpDMAH1gFNGoAKmP///0AL2cAMWoAIFcCMWcBMWUALGROZYYAHlsAJGDj7fUAE1Dx+/ybqLobNmWywdFwgZmSorUAJ1c+VnqesMQAK2GJmKuCk6tBWXUAH1wAK2bCx87V4u4tSG56h5sAD0trgZTGxcYAGVIAJVvk7vBdcYsALWz/uAAAH1IAJFD/vRtYVTMAAEgAIkOCc0IlP2fIy822vsfAydQ1TnVBWH0AKmpOZYj5vS8AJUFJTEK1u8QKKj8eO2RQZoBQWlGdjVA'
+        ];
+        let currentIndex = 0;
+        const slideshow = document.getElementById('slideshow');
+        
+        function changeImage() {
+            currentIndex = (currentIndex + 1) % images.length;
+            slideshow.src = images[currentIndex];
+        }
+        setInterval(changeImage, 5000); // Troca a cada 5 segundos
+
+        // Função para salvar comentários
+        function saveComment() {
+            const name = document.getElementById('name').value;
+            const comment = document.getElementById('comment').value;
+            if (name && comment) {
+                const commentList = document.getElementById('commentList');
+                const now = new Date();
+                const dateTime = `${now.toLocaleDateString()} ${now.toLocaleTimeString()}`;
+                const newComment = document.createElement('div');
+                newComment.classList.add('comment-item');
+                newComment.innerHTML = `
+                    <div class="comment-date">${dateTime}</div>
+                    <span class="comment-name">${name}:</span>
+                    <div class="comment-text">${comment}</div>
+                `;
+                commentList.insertBefore(newComment, commentList.firstChild);
+                document.getElementById('name').value = '';
+                document.getElementById('comment').value = '';
+            } else {
+                alert('Por favor, preencha todos os campos.');
+            }
+        }
+    </script>
+</body>
+</html>
