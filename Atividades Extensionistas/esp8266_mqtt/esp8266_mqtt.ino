@@ -16,8 +16,8 @@
 #define DHTTYPE DHT11 // Tipo do sensor DHT
 
 // Configuração da rede Wi-Fi
-const char* ssid = "Julio_";
-const char* password = "Byjulio996";
+const char* ssid = "ssid";
+const char* password = "Senha";
 
 // Configurações do broker MQTT
 const char* mqttServer = "mqtt.eclipseprojects.io"; // Endereço do seu broker MQTT
@@ -81,6 +81,13 @@ void reconnect() {
 
 float humidity;
 float temperature;
+unsigned long currentMillis;
+const long interval = 5000;              // Intervalo para atualizaçao MQTT
+unsigned long previousMillis = 0;
+const long intervalLedOff = 150;         // Intervalo para desligar o led
+unsigned long previousMillisLedOff = 0;
+int ledState = LOW;
+char payload[100];                      // Cria a string JSON com os dados
 
 void loop() {
   if (!client.connected()) {
@@ -96,6 +103,7 @@ void loop() {
   if (isnan(humidity) || isnan(temperature)) {
     Serial.println("Falha ao ler o sensor DHT!");
 
+    // pisca o led caso tenha erro de leitura do sensor
     delay(500);
     digitalWrite(led, LOW);
     delay(500);
@@ -103,14 +111,34 @@ void loop() {
     return;
   }
 
-  // Cria a string JSON com os dados
-  char payload[100];
   snprintf(payload, sizeof(payload), "{\"temperature\": %.1f, \"humidity\": %.1f}", temperature, humidity);
   
-  Serial.print("Publicando dados: ");
-  Serial.println(payload);
+  // Chama a funçao que envia os dados por MQTT
+  run();
+  
+}
 
-  // Publica os dados no tópico MQTT
-  client.publish(mqttTopic, payload);
-  delay(1000); // Ajuste o intervalo conforme necessário
+
+void run(void){
+  currentMillis = millis();
+
+  // delay para envio de dados por MQTT
+  if (currentMillis - previousMillis >= interval) {
+      previousMillis = currentMillis;
+      previousMillisLedOff = currentMillis;
+
+      // Liga o led para indicar que houve envio de dado
+      digitalWrite(led, LOW);
+      Serial.print("Publicando dados: ");
+      Serial.println(payload);
+
+      // Publica os dados no tópico MQTT
+      client.publish(mqttTopic, payload);
+  }
+
+  // desliga o led se o dado foi enviado apos o tempo corrido
+  if ((currentMillis - previousMillisLedOff >= intervalLedOff) & (digitalRead(led) == 0)) {
+    digitalWrite(led, HIGH);
+  }
+  
 }
