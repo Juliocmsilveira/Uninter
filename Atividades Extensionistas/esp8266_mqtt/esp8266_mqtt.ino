@@ -1,7 +1,7 @@
 /*
  * Projeto: Sensor DHT11 + MQTT Atividades Extensionistas Uninter
  * Autor: Julio C. M. Silveira
- * Versão: 0.0.3
+ * Versão: 0.0.4
  * Data: 27/04/2024
  * UltimA modificação: 09/08/2024
  *
@@ -24,15 +24,19 @@ const char* mqttServer = "mqtt.eclipseprojects.io";
 const int mqttPort = 1883;
 const char* mqttUser = "iot.eclipse.org";
 const char* mqttTopic = "esp8266/data";
+int ledOtaUpdate = 1;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 DHT dht(DHTPIN, DHTTYPE);
-String otaPassword = "defaultPassword"; // Senha OTA padrão
+String otaPassword = "ArduinoOTA"; // Senha OTA padrão *ArduinoOTA
 
 void setup() {
   Serial.begin(115200);
   delay(10);
+
+  pinMode(led, OUTPUT);
+  digitalWrite(led, LOW);
 
   // Inicializa o SPIFFS
   if (!SPIFFS.begin()) {
@@ -45,7 +49,7 @@ void setup() {
 
   // Configuração do WiFiManager
   WiFiManager wifiManager;
-  if (!wifiManager.autoConnect("ESP8266-Config")) {
+  if (!wifiManager.autoConnect("ESP8266-Config-WIFI")) {
     Serial.println("Falha ao conectar e tempo limite alcançado!");
     ESP.reset();
     delay(1000);
@@ -69,11 +73,13 @@ void setup() {
   });
 
   ArduinoOTA.onEnd([]() {
-    Serial.println("\nAtualização OTA finalizada!");
+    Serial.println("Atualização OTA finalizada!");
+    ledOtaUpdateEnd();
   });
 
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progresso: %u%%\r", (progress / (total / 100)));
+    Serial.printf("Progresso: %u%%\n", (progress / (total / 100)));
+    digitalWrite(led, !digitalRead(led)); // led pisca quando atualiza via Wifi
   });
 
   ArduinoOTA.onError([](ota_error_t error) {
@@ -117,11 +123,6 @@ char payload[100];
 void loop() {
   ArduinoOTA.handle();  // Verifica se há uma atualização OTA em andamento
 
-  if (!client.connected()) {
-    reconnect();
-  }
-  client.loop();
-
   humidity = dht.readHumidity();
   temperature = dht.readTemperature();
   
@@ -146,14 +147,22 @@ void run(void){
     previousMillis = currentMillis;
     previousMillisLedOff = currentMillis;
     digitalWrite(led, LOW);
-    Serial.print("Publicando dados: ");
-    Serial.println(payload);
-    client.publish(mqttTopic, payload);
+    checkAndPublishMQTT(); // publica os dados
   }
 
   if ((currentMillis - previousMillisLedOff >= intervalLedOff) && (digitalRead(led) == 0)) {
     digitalWrite(led, HIGH);
   }
+}
+
+void checkAndPublishMQTT(void){
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+  Serial.print("Publicando dados: ");
+  Serial.println(payload);
+  client.publish(mqttTopic, payload);
 }
 
 // Função para carregar a senha OTA do SPIFFS
@@ -179,4 +188,17 @@ void saveOTAPassword(String newPassword) {
     Serial.println("Nova senha OTA salva no SPIFFS: " + otaPassword);
     f.close();
   }
+}
+
+/* Indicaçao visual que a atualizaçao do 
+ * firmware via OTA foi concluida com sucesso
+*/
+void ledOtaUpdateEnd(void){
+  digitalWrite(led, LOW);
+  delay(250);
+  for (int i = 0; i <= 10; i++) {
+    digitalWrite(led, !digitalRead(led));
+    delay(180);
+  }
+  digitalWrite(led, HIGH);
 }
