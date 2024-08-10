@@ -1,7 +1,7 @@
 /*
  * Projeto: Sensor DHT11 + MQTT Atividades Extensionistas Uninter
  * Autor: Julio C. M. Silveira
- * Versão: 0.0.4
+ * Versão: 0.0.5
  * Data: 27/04/2024
  * UltimA modificação: 09/08/2024
  *
@@ -49,6 +49,7 @@ void setup() {
 
   // Configuração do WiFiManager
   WiFiManager wifiManager;
+  wifiManager.setConfigPortalTimeout(300); // Fecha o portal após 5 minutos se não for usado
   if (!wifiManager.autoConnect("ESP8266-Config-WIFI")) {
     Serial.println("Falha ao conectar e tempo limite alcançado!");
     ESP.reset();
@@ -96,7 +97,7 @@ void setup() {
 }
 
 void reconnect() {
-  while (!client.connected()) {
+  while ((!client.connected()) & (WiFi.status() == WL_CONNECTED)) {
     Serial.println("Conectando ao broker MQTT...");
     
     if (client.connect("ESP8266Client")) {
@@ -122,6 +123,25 @@ char payload[100];
 
 void loop() {
   ArduinoOTA.handle();  // Verifica se há uma atualização OTA em andamento
+
+  // Verifica se esta conectado
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Perca de rede, aguardando conexao");
+    int blink = 480;
+    // aguarda a conexao e pisca o led
+    for (int i = 0; i <= blink; i++) {
+      digitalWrite(led, !digitalRead(led));
+      delay(250);
+      if(WiFi.status() == WL_CONNECTED){
+        blink = 0;
+        Serial.println("Conexao restabelecida");
+        return;
+      }
+    }
+    //se passar 120 segundos reseta o ESP8266
+    Serial.println("Reiniciando...");
+    ESP.reset();
+  }
 
   humidity = dht.readHumidity();
   temperature = dht.readTemperature();
