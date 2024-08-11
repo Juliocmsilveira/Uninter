@@ -11,6 +11,7 @@ class ListaEncadeada:
         self.numero_v = 1
         self.atendidos_a = 0
         self.atendidos_v = 0
+        self.ultimo_atendido = None
 
     def inserirSemPrioridade(self, nodo):
         if self.head is None:
@@ -57,7 +58,11 @@ class ListaEncadeada:
         elif cor == 'A':
             self.inserirComPrioridade(nodo)
         
-        print(f"Paciente registrado com cartão número: {numero} e cor: {cor}")
+        print(f"Paciente registrado com cartão número: {numero} e cor: {self.traduzirCor(cor)}")
+        print(" ")
+
+    def traduzirCor(self, cor):
+        return "Amarelo" if cor == 'A' else "Verde"
 
     def imprimirListaEspera(self):
         if self.head is None:
@@ -68,41 +73,47 @@ class ListaEncadeada:
             verdes_fila = 0
             print("Lista de Espera:")
             print(f"{'Número':<10}{'Cor':<10}")
-            print("-" * 20)
+            print("-" * 40)
             while atual:
-                print(f"{atual.numero:<10}{atual.cor:<10}")
+                print(f"{atual.numero:<10}{self.traduzirCor(atual.cor):<10}")
                 if atual.cor == 'A':
                     amarelos_fila += 1
                 elif atual.cor == 'V':
                     verdes_fila += 1
                 atual = atual.proximo
             
-            print("\nResumo da Fila:")
-            print("-" * 20)
+            print(" ")
+            print("Resumo da Fila:")
+            print("-" * 40)
             print(f"Pacientes na fila: {amarelos_fila + verdes_fila}")
             print(f"Pacientes com cartão amarelo na fila: {amarelos_fila}")
             print(f"Pacientes com cartão verde na fila: {verdes_fila}")
             print(f"Pacientes com cartão amarelo atendidos: {self.atendidos_a}")
             print(f"Pacientes com cartão verde atendidos: {self.atendidos_v}")
-            print("-" * 20)
+            print("-" * 40)
+            print(" ")
 
             if self.head:
-                print(f"Próximo paciente a ser chamado: Cartão {self.head.numero}, Cor {self.head.cor}")
+                print(f"Próximo paciente a ser chamado: Cartão {self.head.numero}, Cor {self.traduzirCor(self.head.cor)}")
+            
+            if self.ultimo_atendido:
+                print(f"Atendendo paciente com cartão número: {self.ultimo_atendido.numero}")
 
     def atenderPaciente(self):
         if self.head is None:
             print("Não há pacientes na fila.")
         else:
+            print(f"Chamando paciente com cartão número: {self.head.numero}, Cor {self.traduzirCor(self.head.cor)}")
             if self.head.cor == 'A':
                 self.atendidos_a += 1
             else:
                 self.atendidos_v += 1
-            print(f"Atendendo paciente com cartão número: {self.head.numero}")
+            self.ultimo_atendido = self.head
             self.head = self.head.proximo
 
     def menu(self):
         while True:
-            print("\nMenu:")
+            print("Menu:")
             print("1 – Adicionar paciente à fila")
             print("2 – Mostrar pacientes na fila")
             print("3 – Chamar paciente")
